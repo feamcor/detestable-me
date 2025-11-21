@@ -38,14 +38,8 @@ mod tests {
     use std::cell::RefCell;
     use std::panic;
     use test_context::{test_context, TestContext};
+    use crate::test_common;
     use super::*;
-
-    const PRIMARY_FIRST_NAME: &str = "Lex";
-    const PRIMARY_LAST_NAME: &str = "Luthor";
-    const PRIMARY_FULL_NAME: &str = "Lex Luthor";
-    const SECONDARY_FIRST_NAME: &str = "Darth";
-    const SECONDARY_LAST_NAME: &str = "Vader";
-    const SECONDARY_FULL_NAME: &str = "Darth Vader";
 
     #[test_context(Context)]
     #[test]
@@ -54,7 +48,7 @@ mod tests {
         // Act
         let full_name = context.supervillain.full_name();
         // Assert
-        assert_eq!(full_name, PRIMARY_FULL_NAME, "Unexpected full name");
+        assert_eq!(full_name, test_common::PRIMARY_FULL_NAME, "Unexpected full name");
     }
 
     #[test_context(Context)]
@@ -62,20 +56,20 @@ mod tests {
     fn set_full_name_sets_first_and_last_names(context: &mut Context) {
         // Arrange
         // Act
-        context.supervillain.set_full_name(SECONDARY_FULL_NAME);
+        context.supervillain.set_full_name(test_common::SECONDARY_FULL_NAME);
         // Assert
-        assert_eq!(context.supervillain.first_name, SECONDARY_FIRST_NAME);
-        assert_eq!(context.supervillain.last_name, SECONDARY_LAST_NAME);
+        assert_eq!(context.supervillain.first_name, test_common::SECONDARY_FIRST_NAME);
+        assert_eq!(context.supervillain.last_name, test_common::SECONDARY_LAST_NAME);
     }
 
     #[test]
     fn from_str_slice_produces_supervillain_full_with_first_and_last_name() {
         // Arrange
         // Act
-        let supervillain = Supervillain::from(PRIMARY_FULL_NAME);
+        let supervillain = Supervillain::from(test_common::PRIMARY_FULL_NAME);
         // Assert
-        assert_eq!(supervillain.first_name, PRIMARY_FIRST_NAME);
-        assert_eq!(supervillain.last_name, PRIMARY_LAST_NAME);
+        assert_eq!(supervillain.first_name, test_common::PRIMARY_FIRST_NAME);
+        assert_eq!(supervillain.last_name, test_common::PRIMARY_LAST_NAME);
     }
 
     struct WeaponDouble {
@@ -124,8 +118,8 @@ mod tests {
         fn setup() -> Self {
             Self {
                 supervillain: Supervillain {
-                    first_name: PRIMARY_FIRST_NAME.into(),
-                    last_name: PRIMARY_LAST_NAME.into(),
+                    first_name: test_common::PRIMARY_FIRST_NAME.into(),
+                    last_name: test_common::PRIMARY_LAST_NAME.into(),
                 },
             }
         }
