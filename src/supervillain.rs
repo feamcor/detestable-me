@@ -36,43 +36,46 @@ impl From<&str> for Supervillain {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::panic;
+    use test_context::{test_context, TestContext};
     use super::*;
 
+    const PRIMARY_FIRST_NAME: &str = "Lex";
+    const PRIMARY_LAST_NAME: &str = "Luthor";
+    const PRIMARY_FULL_NAME: &str = "Lex Luthor";
+    const SECONDARY_FIRST_NAME: &str = "Darth";
+    const SECONDARY_LAST_NAME: &str = "Vader";
+    const SECONDARY_FULL_NAME: &str = "Darth Vader";
+
+    #[test_context(Context)]
     #[test]
-    fn full_name_is_first_name_space_last_name() {
+    fn full_name_returns_first_name_space_last_name(context: &mut Context) {
         // Arrange
-        let supervillain = Supervillain {
-            first_name: "Lex".into(),
-            last_name: "Luthor".into(),
-        };
         // Act
-        let full_name = supervillain.full_name();
+        let full_name = context.supervillain.full_name();
         // Assert
-        assert_eq!(full_name, "Lex Luthor", "Unexpected full name");
+        assert_eq!(full_name, PRIMARY_FULL_NAME, "Unexpected full name");
     }
 
+    #[test_context(Context)]
     #[test]
-    fn set_full_name_sets_first_and_last_names() {
+    fn set_full_name_sets_first_and_last_names(context: &mut Context) {
         // Arrange
-        let mut supervillain = Supervillain {
-            first_name: "Lex".into(),
-            last_name: "Luthor".into(),
-        };
         // Act
-        supervillain.set_full_name("Darth Vader");
+        context.supervillain.set_full_name(SECONDARY_FULL_NAME);
         // Assert
-        assert_eq!(supervillain.first_name, "Darth");
-        assert_eq!(supervillain.last_name, "Vader");
+        assert_eq!(context.supervillain.first_name, SECONDARY_FIRST_NAME);
+        assert_eq!(context.supervillain.last_name, SECONDARY_LAST_NAME);
     }
 
     #[test]
     fn from_str_slice_produces_supervillain_full_with_first_and_last_name() {
         // Arrange
         // Act
-        let supervillain = Supervillain::from("Darth Vader");
+        let supervillain = Supervillain::from(PRIMARY_FULL_NAME);
         // Assert
-        assert_eq!(supervillain.first_name, "Darth");
-        assert_eq!(supervillain.last_name, "Vader");
+        assert_eq!(supervillain.first_name, PRIMARY_FIRST_NAME);
+        assert_eq!(supervillain.last_name, PRIMARY_LAST_NAME);
     }
 
     struct WeaponDouble {
@@ -102,17 +105,31 @@ mod tests {
 
     }
 
+    #[test_context(Context)]
     #[test]
-    fn attack_shoots_weapon() {
+    fn attack_shoots_weapon(context: &mut Context) {
         // Arrange
-        let supervillain = Supervillain {
-            first_name: "Lex".into(),
-            last_name: "Luthor".into(),
-        };
         let weapon = WeaponDouble::new();
         // Act
-        supervillain.attack(&weapon);
+        context.supervillain.attack(&weapon);
         // Assert
         assert!(*weapon.is_shot.borrow());
+    }
+
+    struct Context {
+        supervillain: Supervillain,
+    }
+
+    impl TestContext for Context {
+        fn setup() -> Self {
+            Self {
+                supervillain: Supervillain {
+                    first_name: PRIMARY_FIRST_NAME.into(),
+                    last_name: PRIMARY_LAST_NAME.into(),
+                },
+            }
+        }
+
+        fn teardown(self) {}
     }
 }
