@@ -14,6 +14,9 @@ impl Supervillain {
 
     pub fn set_full_name(&mut self, name: &str) {
         let components = name.split_whitespace().collect::<Vec<_>>();
+        if components.len() != 2 {
+            panic!("Name must have first and last name, separated by a space");
+        }
         self.first_name = components[0].into();
         self.last_name = components[1].into();
     }
@@ -60,6 +63,16 @@ mod tests {
         // Assert
         assert_eq!(context.supervillain.first_name, test_common::SECONDARY_FIRST_NAME);
         assert_eq!(context.supervillain.last_name, test_common::SECONDARY_LAST_NAME);
+    }
+
+    #[test_context(Context)]
+    #[test]
+    #[should_panic(expected = "Name must have first and last name, separated by a space")]
+    fn set_full_name_panics_with_empty_name(context: &mut Context) {
+        // Arrange
+        // Act
+        context.supervillain.set_full_name("");
+        // Assert
     }
 
     #[test]
