@@ -1,3 +1,4 @@
+use std::time::Duration;
 use thiserror::Error;
 
 pub struct Supervillain {
@@ -32,6 +33,11 @@ impl Supervillain {
     pub fn attack(&self, weapon: &impl MegaWeapon) {
         weapon.shoot();
     }
+
+    pub async fn come_up_with_plan(&self) -> String {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        String::from("Take over the world!")
+    }
 }
 
 impl TryFrom<&str> for Supervillain {
@@ -59,7 +65,7 @@ mod tests {
     use crate::test_common;
     use std::cell::RefCell;
     use std::panic;
-    use test_context::{TestContext, test_context};
+    use test_context::{AsyncTestContext, test_context};
 
     #[test_context(Context)]
     #[test]
@@ -105,7 +111,8 @@ mod tests {
     }
 
     #[test]
-    fn try_from_str_slice_produces_supervillain_full_with_first_and_last_name() -> Result<(), EvilError> {
+    fn try_from_str_slice_produces_supervillain_full_with_first_and_last_name()
+    -> Result<(), EvilError> {
         // Arrange
         // Act
         let supervillain = Supervillain::try_from(test_common::SECONDARY_FULL_NAME)?;
@@ -167,8 +174,8 @@ mod tests {
         supervillain: Supervillain,
     }
 
-    impl TestContext for Context {
-        fn setup() -> Self {
+    impl AsyncTestContext for Context {
+        async fn setup() -> Self {
             Self {
                 supervillain: Supervillain {
                     first_name: test_common::PRIMARY_FIRST_NAME.into(),
@@ -177,6 +184,15 @@ mod tests {
             }
         }
 
-        fn teardown(self) {}
+        async fn teardown(self) {}
+    }
+
+    #[tokio::test]
+    #[test_context(Context)]
+    async fn plan_is_sadly_expected(context: &mut Context) {
+        assert_eq!(
+            context.supervillain.come_up_with_plan().await,
+            "Take over the world!"
+        );
     }
 }
