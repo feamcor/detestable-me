@@ -1,7 +1,10 @@
+//! Module for Super Villains and their related stuff
+
 use std::time::Duration;
 use thiserror::Error;
 
-pub struct Supervillain {
+/// Type that represents super villains
+pub struct SuperVillain {
     pub first_name: String,
     pub last_name: String,
 }
@@ -16,7 +19,20 @@ pub trait MegaWeapon {
     fn shoot(&self);
 }
 
-impl Supervillain {
+impl SuperVillain {
+    /// Returns the Super Villain's full name as a single string.
+    ///
+    /// Full name is produced by concatenating the first and last name with a space.
+    ///
+    /// # Examples
+    /// ```
+    ///# use evil::supervillain::SuperVillain;
+    /// let lex = SuperVillain {
+    ///     first_name: "Lex".into(),
+    ///     last_name: "Luthor".into(),
+    /// };
+    /// assert_eq!(lex.full_name(), "Lex Luthor");
+    /// ```
     pub fn full_name(&self) -> String {
         format!("{} {}", self.first_name, self.last_name)
     }
@@ -40,7 +56,7 @@ impl Supervillain {
     }
 }
 
-impl TryFrom<&str> for Supervillain {
+impl TryFrom<&str> for SuperVillain {
     type Error = EvilError;
 
     fn try_from(name: &str) -> Result<Self, Self::Error> {
@@ -115,7 +131,7 @@ mod tests {
     -> Result<(), EvilError> {
         // Arrange
         // Act
-        let supervillain = Supervillain::try_from(test_common::SECONDARY_FULL_NAME)?;
+        let supervillain = SuperVillain::try_from(test_common::SECONDARY_FULL_NAME)?;
         // Assert
         assert_eq!(supervillain.first_name, test_common::SECONDARY_FIRST_NAME);
         assert_eq!(supervillain.last_name, test_common::SECONDARY_LAST_NAME);
@@ -124,7 +140,7 @@ mod tests {
 
     #[test]
     fn try_from_str_slice_produces_error_with_less_than_two_substrings() {
-        let result = Supervillain::try_from("");
+        let result = SuperVillain::try_from("");
         let Err(error) = result else {
             panic!("Unexpected value returned by try_from");
         };
@@ -153,7 +169,7 @@ mod tests {
 
     impl Drop for WeaponDouble {
         fn drop(&mut self) {
-            if *self.is_shot.borrow() != true {
+            if !*self.is_shot.borrow() {
                 panic!("Failed to call shoot()");
             }
         }
@@ -171,13 +187,13 @@ mod tests {
     }
 
     struct Context {
-        supervillain: Supervillain,
+        supervillain: SuperVillain,
     }
 
     impl AsyncTestContext for Context {
         async fn setup() -> Self {
             Self {
-                supervillain: Supervillain {
+                supervillain: SuperVillain {
                     first_name: test_common::PRIMARY_FIRST_NAME.into(),
                     last_name: test_common::PRIMARY_LAST_NAME.into(),
                 },
