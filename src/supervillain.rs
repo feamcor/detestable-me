@@ -4,9 +4,12 @@ use std::time::Duration;
 use thiserror::Error;
 
 #[cfg(not(test))]
-use crate::sidekick::Sidekick;
+use crate::Sidekick;
 #[cfg(test)]
 use tests::doubles::Sidekick;
+
+use crate::Gadget;
+use crate::Henchman;
 
 /// Type that represents supervillains
 #[derive(Default)]
@@ -33,7 +36,7 @@ impl SuperVillain<'_> {
     ///
     /// # Examples
     /// ```
-    ///# use evil::supervillain::SuperVillain;
+    ///# use evil::SuperVillain;
     /// let lex = SuperVillain {
     ///     first_name: "Lex".into(),
     ///     last_name: "Luthor".into(),
@@ -70,6 +73,19 @@ impl SuperVillain<'_> {
             }
         }
     }
+
+    pub fn start_world_domination_stage1<H: Henchman, G: Gadget>(
+        &self,
+        henchman: &mut H,
+        gadget: &G,
+    ) {
+        if let Some(ref sidekick) = self.sidekick {
+            let targets = sidekick.get_weak_targets(gadget);
+            if !targets.is_empty() {
+                henchman.build_secret_hq(targets[0].clone());
+            }
+        }
+    }
 }
 
 impl TryFrom<&str> for SuperVillain<'_> {
@@ -95,10 +111,12 @@ impl TryFrom<&str> for SuperVillain<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Henchman;
     use crate::test_common;
     use std::cell::RefCell;
     use std::panic;
-    use test_context::{AsyncTestContext, test_context};
+    use test_context::AsyncTestContext;
+    use test_context::test_context;
 
     #[test_context(Context)]
     #[test]
@@ -276,10 +294,13 @@ mod tests {
     }
 
     pub(crate) mod doubles {
+        use crate::Gadget;
         use std::marker::PhantomData;
+
         pub struct Sidekick<'a> {
             phantom: PhantomData<&'a ()>,
             pub agree_answer: bool,
+            pub targets: Vec<String>,
         }
 
         impl<'a> Sidekick<'a> {
@@ -287,12 +308,53 @@ mod tests {
                 Sidekick {
                     phantom: PhantomData,
                     agree_answer: false,
+                    targets: vec![],
                 }
             }
 
             pub fn agree(&self) -> bool {
                 self.agree_answer
             }
+
+            pub fn get_weak_targets<G: Gadget>(&self, _gadget: &G) -> Vec<String> {
+                self.targets.clone()
+            }
         }
+    }
+
+    struct GadgetDummy;
+
+    impl Gadget for GadgetDummy {
+        fn do_stuff(&self) {}
+    }
+
+    struct HenchmanSpy {
+        hq_location: Option<String>,
+    }
+
+    impl Henchman for HenchmanSpy {
+        fn build_secret_hq(&mut self, location: String) {
+            self.hq_location = Some(location);
+        }
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn world_domination_stage1_builds_hq_in_first_weak_target(context: &mut Context) {
+        // Arrange
+        let gadget_dummy = GadgetDummy {};
+        let mut henchman_spy = HenchmanSpy { hq_location: None };
+        let mut sidekick_double = doubles::Sidekick::new();
+        sidekick_double.targets = test_common::TARGETS.map(String::from).to_vec();
+        context.supervillain.sidekick = Some(sidekick_double);
+        // Act
+        context
+            .supervillain
+            .start_world_domination_stage1(&mut henchman_spy, &gadget_dummy);
+        // Assert
+        assert_eq!(
+            henchman_spy.hq_location,
+            Some(test_common::FIRST_TARGET.to_string())
+        );
     }
 }
