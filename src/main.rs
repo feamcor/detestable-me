@@ -1,8 +1,5 @@
-mod supervillain;
-
-#[cfg(test)]
-mod test_common;
+#![allow(dead_code)]
 
 fn main() {
-    println!("Hello, world!");
+    println!("Detestable Me!");
 }

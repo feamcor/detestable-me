@@ -3,10 +3,17 @@
 use std::time::Duration;
 use thiserror::Error;
 
-/// Type that represents super villains
-pub struct SuperVillain {
+#[cfg(not(test))]
+use crate::sidekick::Sidekick;
+#[cfg(test)]
+use tests::doubles::Sidekick;
+
+/// Type that represents supervillains
+#[derive(Default)]
+pub struct SuperVillain<'a> {
     pub first_name: String,
     pub last_name: String,
+    pub sidekick: Option<Sidekick<'a>>,
 }
 
 #[derive(Error, Debug)]
@@ -19,7 +26,7 @@ pub trait MegaWeapon {
     fn shoot(&self);
 }
 
-impl SuperVillain {
+impl SuperVillain<'_> {
     /// Returns the Super Villain's full name as a single string.
     ///
     /// Full name is produced by concatenating the first and last name with a space.
@@ -30,6 +37,7 @@ impl SuperVillain {
     /// let lex = SuperVillain {
     ///     first_name: "Lex".into(),
     ///     last_name: "Luthor".into(),
+    ///     ..Default::default()
     /// };
     /// assert_eq!(lex.full_name(), "Lex Luthor");
     /// ```
@@ -54,9 +62,17 @@ impl SuperVillain {
         tokio::time::sleep(Duration::from_millis(100)).await;
         String::from("Take over the world!")
     }
+
+    pub fn conspire(&mut self) {
+        if let Some(ref sidekick) = self.sidekick {
+            if !sidekick.agree() {
+                self.sidekick = None;
+            }
+        }
+    }
 }
 
-impl TryFrom<&str> for SuperVillain {
+impl TryFrom<&str> for SuperVillain<'_> {
     type Error = EvilError;
 
     fn try_from(name: &str) -> Result<Self, Self::Error> {
@@ -70,6 +86,7 @@ impl TryFrom<&str> for SuperVillain {
             Ok(Self {
                 first_name: components[0].into(),
                 last_name: components[1].into(),
+                ..Default::default()
             })
         }
     }
@@ -186,16 +203,17 @@ mod tests {
         assert!(*weapon.is_shot.borrow());
     }
 
-    struct Context {
-        supervillain: SuperVillain,
+    struct Context<'a> {
+        supervillain: SuperVillain<'a>,
     }
 
-    impl AsyncTestContext for Context {
-        async fn setup() -> Self {
+    impl<'a> AsyncTestContext for Context<'a> {
+        async fn setup() -> Context<'a> {
             Self {
                 supervillain: SuperVillain {
                     first_name: test_common::PRIMARY_FIRST_NAME.into(),
                     last_name: test_common::PRIMARY_LAST_NAME.into(),
+                    ..Default::default()
                 },
             }
         }
@@ -205,10 +223,76 @@ mod tests {
 
     #[tokio::test]
     #[test_context(Context)]
-    async fn plan_is_sadly_expected(context: &mut Context) {
+    async fn plan_is_sadly_expected(context: &mut Context<'_>) {
         assert_eq!(
             context.supervillain.come_up_with_plan().await,
             "Take over the world!"
         );
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn keep_sidekick_if_agrees_with_conspiracy(context: &mut Context<'_>) {
+        // Arrange
+        let mut sidekick_double = doubles::Sidekick::new();
+        sidekick_double.agree_answer = true;
+        context.supervillain.sidekick = Some(sidekick_double);
+        // Act
+        context.supervillain.conspire();
+        // Assert
+        assert!(
+            context.supervillain.sidekick.is_some(),
+            "Sidekick fired unexpectedly"
+        );
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn fire_sidekick_if_doesnt_agree_with_conspiracy(context: &mut Context<'_>) {
+        // Arrange
+        let mut sidekick_double = doubles::Sidekick::new();
+        sidekick_double.agree_answer = false;
+        context.supervillain.sidekick = Some(sidekick_double);
+        // Act
+        context.supervillain.conspire();
+        // Assert
+        assert!(
+            context.supervillain.sidekick.is_none(),
+            "Sidekick not fired unexpectedly"
+        );
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn conspiracy_without_sidekick_doesnt_fail(context: &mut Context<'_>) {
+        // Arrange
+        // Act
+        context.supervillain.conspire();
+        // Assert
+        assert!(
+            context.supervillain.sidekick.is_none(),
+            "Unexpected sidekick"
+        );
+    }
+
+    pub(crate) mod doubles {
+        use std::marker::PhantomData;
+        pub struct Sidekick<'a> {
+            phantom: PhantomData<&'a ()>,
+            pub agree_answer: bool,
+        }
+
+        impl<'a> Sidekick<'a> {
+            pub fn new() -> Sidekick<'a> {
+                Sidekick {
+                    phantom: PhantomData,
+                    agree_answer: false,
+                }
+            }
+
+            pub fn agree(&self) -> bool {
+                self.agree_answer
+            }
+        }
     }
 }
