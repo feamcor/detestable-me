@@ -1,5 +1,6 @@
 //! Module for Super Villains and their related stuff
 
+use rand::Rng;
 use std::time::Duration;
 use thiserror::Error;
 
@@ -57,8 +58,15 @@ impl SuperVillain<'_> {
         self.last_name = components[1].into();
     }
 
-    pub fn attack(&self, weapon: &impl MegaWeapon) {
+    pub fn attack(&self, weapon: &impl MegaWeapon, intense: bool) {
         weapon.shoot();
+        if intense {
+            let mut rng = rand::rng();
+            let times = rng.random_range(1..3);
+            for _ in 0..times {
+                weapon.shoot();
+            }
+        }
     }
 
     pub async fn come_up_with_plan(&self) -> String {
@@ -85,6 +93,11 @@ impl SuperVillain<'_> {
                 henchman.build_secret_hq(targets[0].clone());
             }
         }
+    }
+
+    pub fn start_world_domination_stage2<H: Henchman>(&self, henchman: H) {
+        henchman.fight_enemies();
+        henchman.do_hard_things();
     }
 }
 
@@ -113,10 +126,18 @@ mod tests {
     use super::*;
     use crate::Henchman;
     use crate::test_common;
-    use std::cell::RefCell;
+    use std::cell::Cell;
     use std::panic;
     use test_context::AsyncTestContext;
     use test_context::test_context;
+
+    fn at_least(minimum: u32) -> impl Fn(u32) -> bool {
+        move |times: u32| times >= minimum
+    }
+
+    fn once() -> impl Fn(u32) -> bool {
+        move |times: u32| times == 1
+    }
 
     #[test_context(Context)]
     #[test]
@@ -185,26 +206,30 @@ mod tests {
     }
 
     struct WeaponDouble {
-        pub is_shot: RefCell<bool>,
+        pub times_shot: Cell<u32>,
     }
 
     impl WeaponDouble {
-        fn new() -> Self {
-            Self {
-                is_shot: RefCell::new(false),
+        fn new() -> WeaponDouble {
+            WeaponDouble {
+                times_shot: Cell::default(),
             }
+        }
+
+        fn verify<T: Fn(u32) -> bool>(&self, check: T) {
+            assert!(check(self.times_shot.get()));
         }
     }
 
     impl MegaWeapon for WeaponDouble {
         fn shoot(&self) {
-            *self.is_shot.borrow_mut() = true;
+            self.times_shot.set(self.times_shot.get() + 1);
         }
     }
 
     impl Drop for WeaponDouble {
         fn drop(&mut self) {
-            if !*self.is_shot.borrow() {
+            if self.times_shot.get() == 0 {
                 panic!("Failed to call shoot()");
             }
         }
@@ -212,13 +237,21 @@ mod tests {
 
     #[test_context(Context)]
     #[test]
-    fn attack_shoots_weapon(context: &mut Context) {
+    fn non_intense_attack_shoots_weapon_once(context: &mut Context) {
         // Arrange
         let weapon = WeaponDouble::new();
         // Act
-        context.supervillain.attack(&weapon);
+        context.supervillain.attack(&weapon, false);
         // Assert
-        assert!(*weapon.is_shot.borrow());
+        weapon.verify(once());
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn intensive_attack_shoots_weapon_twice_or_more(context: &mut Context) {
+        let weapon = WeaponDouble::new();
+        context.supervillain.attack(&weapon, true);
+        weapon.verify(at_least(2));
     }
 
     struct Context<'a> {
@@ -303,6 +336,12 @@ mod tests {
             pub targets: Vec<String>,
         }
 
+        impl<'a> Default for Sidekick<'a> {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
         impl<'a> Sidekick<'a> {
             pub fn new() -> Sidekick<'a> {
                 Sidekick {
@@ -328,13 +367,44 @@ mod tests {
         fn do_stuff(&self) {}
     }
 
-    struct HenchmanSpy {
+    #[derive(Default)]
+    struct HenchmanDouble {
         hq_location: Option<String>,
+        current_invocation: Cell<u32>,
+        done_hard_things: Cell<u32>,
+        fought_enemies: Cell<u32>,
+        assertions: Vec<Box<dyn Fn(&HenchmanDouble) -> () + Send>>,
     }
 
-    impl Henchman for HenchmanSpy {
+    impl HenchmanDouble {
+        fn verify_two_things_done(&self) {
+            assert!(self.done_hard_things.get() == 2 && self.fought_enemies.get() == 1);
+        }
+    }
+
+    impl Henchman for HenchmanDouble {
         fn build_secret_hq(&mut self, location: String) {
             self.hq_location = Some(location);
+        }
+
+        fn do_hard_things(&self) {
+            self.current_invocation
+                .set(self.current_invocation.get() + 1);
+            self.done_hard_things.set(self.current_invocation.get());
+        }
+
+        fn fight_enemies(&self) {
+            self.current_invocation
+                .set(self.current_invocation.get() + 1);
+            self.fought_enemies.set(self.current_invocation.get());
+        }
+    }
+
+    impl Drop for HenchmanDouble {
+        fn drop(&mut self) {
+            for assertion in &self.assertions {
+                assertion(self);
+            }
         }
     }
 
@@ -343,7 +413,7 @@ mod tests {
     fn world_domination_stage1_builds_hq_in_first_weak_target(context: &mut Context) {
         // Arrange
         let gadget_dummy = GadgetDummy {};
-        let mut henchman_spy = HenchmanSpy { hq_location: None };
+        let mut henchman_spy = HenchmanDouble::default();
         let mut sidekick_double = doubles::Sidekick::new();
         sidekick_double.targets = test_common::TARGETS.map(String::from).to_vec();
         context.supervillain.sidekick = Some(sidekick_double);
@@ -356,5 +426,15 @@ mod tests {
             henchman_spy.hq_location,
             Some(test_common::FIRST_TARGET.to_string())
         );
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn world_domination_stage2_tells_henchman_to_do_hard_things_and_fight_with_enemies(
+        context: &mut Context,
+    ) {
+        let mut henchman = HenchmanDouble::default();
+        henchman.assertions = vec![Box::new(move |h| h.verify_two_things_done())];
+        context.supervillain.start_world_domination_stage2(henchman);
     }
 }
