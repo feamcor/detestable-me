@@ -9,8 +9,8 @@ use crate::Sidekick;
 #[cfg(test)]
 use tests::doubles::Sidekick;
 
-use crate::Gadget;
 use crate::Henchman;
+use crate::{Cipher, Gadget};
 
 /// Type that represents supervillains
 #[derive(Default)]
@@ -18,6 +18,7 @@ pub struct SuperVillain<'a> {
     pub first_name: String,
     pub last_name: String,
     pub sidekick: Option<Sidekick<'a>>,
+    pub shared_key: String,
 }
 
 #[derive(Error, Debug)]
@@ -33,7 +34,7 @@ pub trait MegaWeapon {
 impl SuperVillain<'_> {
     /// Returns the Super Villain's full name as a single string.
     ///
-    /// Full name is produced by concatenating the first and last name with a space.
+    /// A Full Name is produced by concatenating the first and last names with a space.
     ///
     /// # Examples
     /// ```
@@ -98,6 +99,13 @@ impl SuperVillain<'_> {
     pub fn start_world_domination_stage2<H: Henchman>(&self, henchman: H) {
         henchman.fight_enemies();
         henchman.do_hard_things();
+    }
+
+    pub fn tell_plans<C: Cipher>(&self, secret: &str, cipher: &C) {
+        if let Some(ref sidekick) = self.sidekick {
+            let ciphered_message = cipher.transform(secret, &self.shared_key);
+            sidekick.tell(&ciphered_message);
+        }
     }
 }
 
@@ -309,7 +317,7 @@ mod tests {
         // Assert
         assert!(
             context.supervillain.sidekick.is_none(),
-            "Sidekick not fired unexpectedly"
+            "Sidekick isn't fired unexpectedly"
         );
     }
 
@@ -328,12 +336,15 @@ mod tests {
 
     pub(crate) mod doubles {
         use crate::Gadget;
+        use std::cell::RefCell;
         use std::marker::PhantomData;
 
         pub struct Sidekick<'a> {
             phantom: PhantomData<&'a ()>,
             pub agree_answer: bool,
             pub targets: Vec<String>,
+            pub received_message: RefCell<String>,
+            pub assertions: Vec<Box<dyn Fn(&Sidekick) + Send>>,
         }
 
         impl<'a> Default for Sidekick<'a> {
@@ -348,6 +359,8 @@ mod tests {
                     phantom: PhantomData,
                     agree_answer: false,
                     targets: vec![],
+                    received_message: RefCell::new(String::new()),
+                    assertions: vec![],
                 }
             }
 
@@ -357,6 +370,22 @@ mod tests {
 
             pub fn get_weak_targets<G: Gadget>(&self, _gadget: &G) -> Vec<String> {
                 self.targets.clone()
+            }
+
+            pub fn tell(&self, ciphered_msg: &str) {
+                *self.received_message.borrow_mut() = ciphered_msg.into();
+            }
+
+            pub fn verify_received_message(&self, expected_message: &str) {
+                assert_eq!(*self.received_message.borrow(), expected_message);
+            }
+        }
+
+        impl<'a> Drop for Sidekick<'a> {
+            fn drop(&mut self) {
+                for assertion in &self.assertions {
+                    assertion(self);
+                }
             }
         }
     }
@@ -373,7 +402,7 @@ mod tests {
         current_invocation: Cell<u32>,
         done_hard_things: Cell<u32>,
         fought_enemies: Cell<u32>,
-        assertions: Vec<Box<dyn Fn(&HenchmanDouble) -> () + Send>>,
+        assertions: Vec<Box<dyn Fn(&HenchmanDouble) + Send>>,
     }
 
     impl HenchmanDouble {
@@ -436,5 +465,30 @@ mod tests {
         let mut henchman = HenchmanDouble::default();
         henchman.assertions = vec![Box::new(move |h| h.verify_two_things_done())];
         context.supervillain.start_world_domination_stage2(henchman);
+    }
+
+    struct CipherDouble;
+
+    impl Cipher for CipherDouble {
+        fn transform(&self, secret: &str, _key: &str) -> String {
+            format!("+{secret}+")
+        }
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn tell_plans_sends_ciphered_message(context: &mut Context) {
+        // Arrange
+        let mut sidekick_double = doubles::Sidekick::new();
+        sidekick_double.assertions = vec![Box::new(move |s| {
+            s.verify_received_message(test_common::MAIN_CIPHERED_MESSAGE)
+        })];
+        context.supervillain.sidekick = Some(sidekick_double);
+        let fake_cipher = CipherDouble {};
+        // Act
+        context
+            .supervillain
+            .tell_plans(test_common::MAIN_SECRET_MESSAGE, &fake_cipher);
+        // Assert
     }
 }
