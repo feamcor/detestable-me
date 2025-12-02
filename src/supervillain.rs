@@ -1,8 +1,14 @@
 //! Module for Super Villains and their related stuff
 
 use rand::Rng;
+use std::io::Read;
 use std::time::Duration;
 use thiserror::Error;
+
+#[cfg(not(test))]
+use std::fs::File;
+#[cfg(test)]
+use tests::doubles::File;
 
 #[cfg(test)]
 use mockall::automock;
@@ -14,6 +20,8 @@ use mockall_double::double;
 
 use crate::Henchman;
 use crate::{Cipher, Gadget};
+
+const LISTING_PATH: &str = "tmp/listings.csv";
 
 /// Type that represents supervillains
 #[derive(Default)]
@@ -111,6 +119,26 @@ impl SuperVillain<'_> {
             sidekick.tell(&ciphered_message);
         }
     }
+
+    pub fn are_there_vulnerable_locations(&self) -> Option<bool> {
+        let mut listing = String::new();
+
+        let Ok(mut file_listing) = File::open(LISTING_PATH) else {
+            return None;
+        };
+
+        let Ok(_) = file_listing.read_to_string(&mut listing) else {
+            return None;
+        };
+
+        for line in listing.lines() {
+            if line.ends_with("weak") {
+                return Some(true);
+            }
+        }
+
+        Some(false)
+    }
 }
 
 impl TryFrom<&str> for SuperVillain<'_> {
@@ -140,10 +168,11 @@ mod tests {
     use crate::gadget::MockGadget;
     use crate::henchman::MockHenchman;
     use crate::test_common;
-    use assertables::assert_none;
     use assertables::{assert_matches, assert_some};
+    use assertables::{assert_none, assert_some_eq_x};
     use mockall::Sequence;
     use mockall::predicate::eq;
+    use std::cell::RefCell;
     use std::panic;
     use test_context::AsyncTestContext;
     use test_context::test_context;
@@ -226,10 +255,7 @@ mod tests {
         mock_sidekick.expect_agree().once().return_const(true);
         context.supervillain.sidekick = Some(mock_sidekick);
         context.supervillain.conspire();
-        assert_some!(
-            &context.supervillain.sidekick,
-            "Sidekick fired unexpectedly"
-        );
+        assert_some!(&context.supervillain.sidekick, "Unexpected: Sidekick fired");
     }
 
     #[test_context(Context)]
@@ -241,7 +267,7 @@ mod tests {
         context.supervillain.conspire();
         assert_none!(
             &context.supervillain.sidekick,
-            "Sidekick not fired unexpectedly"
+            "Unexpected: Sidekick didn't fire"
         );
     }
 
@@ -249,7 +275,7 @@ mod tests {
     #[test]
     fn conspiracy_without_sidekick_doesnt_fail(context: &mut Context<'_>) {
         context.supervillain.conspire();
-        assert_none!(&context.supervillain.sidekick, "Unexpected sidekick");
+        assert_none!(&context.supervillain.sidekick, "Unexpected: no sidekick");
     }
 
     #[test_context(Context)]
@@ -318,6 +344,46 @@ mod tests {
             .tell_plans(test_common::MAIN_SECRET_MESSAGE, &mock_cipher);
     }
 
+    #[test_context(Context)]
+    #[test]
+    fn vulnerable_locations_with_no_file_returns_none(context: &mut Context) {
+        FILE_OPEN_OK.replace(None);
+        assert_none!(context.supervillain.are_there_vulnerable_locations());
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn vulnerable_locations_with_file_reading_error_returns_none(context: &mut Context) {
+        FILE_OPEN_OK.replace(Some(doubles::File::new(None)));
+        assert_none!(context.supervillain.are_there_vulnerable_locations());
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn vulnerable_locations_with_weak_returns_true(context: &mut Context) {
+        FILE_OPEN_OK.replace(Some(doubles::File::new(Some(String::from(
+            r#"Madrid,strong
+             Las Vegas,weak
+             New York,strong"#,
+        )))));
+        assert_some_eq_x!(context.supervillain.are_there_vulnerable_locations(), true);
+    }
+
+    #[test_context(Context)]
+    #[test]
+    fn vulnerable_locations_without_weak_returns_false(context: &mut Context) {
+        FILE_OPEN_OK.replace(Some(doubles::File::new(Some(String::from(
+            r#"Madrid,strong
+             Oregon,strong
+             New York,strong"#,
+        )))));
+        assert_some_eq_x!(context.supervillain.are_there_vulnerable_locations(), false);
+    }
+
+    thread_local! {
+        static FILE_OPEN_OK: RefCell<Option<doubles::File>> = const { RefCell::new(None) };
+    }
+
     struct Context<'a> {
         supervillain: SuperVillain<'a>,
     }
@@ -334,5 +400,40 @@ mod tests {
         }
 
         async fn teardown(self) {}
+    }
+
+    pub(crate) mod doubles {
+        use crate::supervillain::tests::FILE_OPEN_OK;
+        use std::io;
+        use std::io::Error;
+        use std::io::ErrorKind;
+        use std::path::Path;
+
+        pub(crate) struct File {
+            read_result: Option<String>,
+        }
+
+        impl File {
+            pub(crate) fn new(read_result: Option<String>) -> File {
+                File { read_result }
+            }
+
+            pub(crate) fn open<P: AsRef<Path>>(_path: P) -> io::Result<File> {
+                if let Some(file) = FILE_OPEN_OK.take() {
+                    Ok(file)
+                } else {
+                    Err(Error::from(ErrorKind::NotFound))
+                }
+            }
+
+            pub(crate) fn read_to_string(&mut self, buffer: &mut String) -> io::Result<usize> {
+                if let Some(ref content) = self.read_result {
+                    *buffer = content.to_owned();
+                    Ok(buffer.len())
+                } else {
+                    Err(Error::from(ErrorKind::Other))
+                }
+            }
+        }
     }
 }
