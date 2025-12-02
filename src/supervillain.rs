@@ -1,9 +1,11 @@
 //! Module for Super Villains and their related stuff
 
 use rand::Rng;
-use std::io::Read;
 use std::time::Duration;
 use thiserror::Error;
+
+#[allow(unused_imports)]
+use std::io::Read;
 
 #[cfg(not(test))]
 use std::fs::File;
