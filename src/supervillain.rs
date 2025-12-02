@@ -134,6 +134,7 @@ mod tests {
     use super::*;
     use crate::Henchman;
     use crate::test_common;
+    use assertables::{assert_matches, assert_none, assert_some, assert_some_eq_x};
     use std::cell::Cell;
     use std::panic;
     use test_context::AsyncTestContext;
@@ -170,14 +171,8 @@ mod tests {
             .supervillain
             .set_full_name(test_common::SECONDARY_FULL_NAME);
         // Assert
-        assert_eq!(
-            context.supervillain.first_name,
-            test_common::SECONDARY_FIRST_NAME
-        );
-        assert_eq!(
-            context.supervillain.last_name,
-            test_common::SECONDARY_LAST_NAME
-        );
+        assert2::check!(context.supervillain.first_name == test_common::SECONDARY_FIRST_NAME);
+        assert2::assert!(context.supervillain.last_name == test_common::SECONDARY_LAST_NAME);
     }
 
     #[test_context(Context)]
@@ -208,9 +203,7 @@ mod tests {
         let Err(error) = result else {
             panic!("Unexpected value returned by try_from");
         };
-        assert!(matches!(error,
-            EvilError::ParseError { purpose, reason }
-            if purpose == "full_name" && reason == "Too few arguments"));
+        assert_matches!(error, EvilError::ParseError { purpose, reason } if purpose == "full_name" && reason == "Too few arguments");
     }
 
     struct WeaponDouble {
@@ -299,8 +292,8 @@ mod tests {
         // Act
         context.supervillain.conspire();
         // Assert
-        assert!(
-            context.supervillain.sidekick.is_some(),
+        assert_some!(
+            &context.supervillain.sidekick,
             "Sidekick fired unexpectedly"
         );
     }
@@ -315,8 +308,8 @@ mod tests {
         // Act
         context.supervillain.conspire();
         // Assert
-        assert!(
-            context.supervillain.sidekick.is_none(),
+        assert_none!(
+            &context.supervillain.sidekick,
             "Sidekick isn't fired unexpectedly"
         );
     }
@@ -328,15 +321,13 @@ mod tests {
         // Act
         context.supervillain.conspire();
         // Assert
-        assert!(
-            context.supervillain.sidekick.is_none(),
-            "Unexpected sidekick"
-        );
+        assert_none!(&context.supervillain.sidekick, "Unexpected sidekick");
     }
 
     pub(crate) mod doubles {
         use crate::Gadget;
         use std::cell::RefCell;
+        use std::fmt;
         use std::marker::PhantomData;
 
         pub struct Sidekick<'a> {
@@ -386,6 +377,16 @@ mod tests {
                 for assertion in &self.assertions {
                     assertion(self);
                 }
+            }
+        }
+
+        impl fmt::Debug for Sidekick<'_> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.debug_struct("Sidekick")
+                    .field("agree_answer", &self.agree_answer)
+                    .field("targets", &self.targets)
+                    .field("received_msg", &self.received_message)
+                    .finish()
             }
         }
     }
@@ -451,10 +452,7 @@ mod tests {
             .supervillain
             .start_world_domination_stage1(&mut henchman_spy, &gadget_dummy);
         // Assert
-        assert_eq!(
-            henchman_spy.hq_location,
-            Some(test_common::FIRST_TARGET.to_string())
-        );
+        assert_some_eq_x!(&henchman_spy.hq_location, test_common::FIRST_TARGET);
     }
 
     #[test_context(Context)]
